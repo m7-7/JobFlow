@@ -1,0 +1,22 @@
+# Environment secrets — never commit real .env files
+.env
+.env.local
+.env.*.local
+
+# Node dependencies
+node_modules/
+frontend/node_modules/
+backend/node_modules/
+
+# Build output
+frontend/dist/
+backend/dist/
+
+# TypeScript build info
+*.tsbuildinfo
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+*.swp
