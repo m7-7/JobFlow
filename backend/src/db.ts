@@ -6,6 +6,7 @@ if (!connectionString) {
   throw new Error("DATABASE_URL environment variable is required");
 }
 
-// Redact credentials from any accidental log output
+// postgres.js connects lazily, on the first query. Never log connectionString:
+// it contains the database password.
 const client = postgres(connectionString);
 export const db = drizzle(client);

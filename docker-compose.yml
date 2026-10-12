@@ -1,3 +1,5 @@
+# Local development only. Every published port is bound to 127.0.0.1 so the
+# stack is reachable from this machine only. Not a remote/production deployment.
 services:
   postgres:
     image: postgres:16-alpine
@@ -28,9 +30,8 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-jobflow}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-jobflow}
       PORT: "3001"
-      CORS_ORIGIN: "http://localhost:5173"
     ports:
-      - "3001:3001"
+      - "127.0.0.1:3001:3001"
 
   frontend:
     build:
@@ -42,7 +43,9 @@ services:
     environment:
       BACKEND_PROXY_TARGET: http://backend:3001
     ports:
-      - "5173:5173"
+      # Vite listens on 0.0.0.0 inside the container (required for Docker port
+      # forwarding); the host side is restricted to localhost here.
+      - "127.0.0.1:5173:5173"
 
 volumes:
   postgres_data:

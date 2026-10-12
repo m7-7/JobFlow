@@ -46,10 +46,10 @@ JobFlow/
    cp .env.example .env
    ```
 
-2. Open `.env` and set a real password for `POSTGRES_PASSWORD` (and update `DATABASE_URL` to match):
+2. Open `.env` and set a real password for `POSTGRES_PASSWORD`, and use the same password in `DATABASE_URL`:
    ```dotenv
    POSTGRES_PASSWORD=your_secure_password_here
-   DATABASE_URL=postgresql://jobflow:your_secure_password_here@postgres:5432/jobflow
+   DATABASE_URL=postgresql://jobflow:your_secure_password_here@localhost:5432/jobflow
    ```
 
    > `.env` is listed in `.gitignore` and must never be committed.
@@ -61,9 +61,16 @@ JobFlow/
 | `POSTGRES_USER` | No (default: `jobflow`) | PostgreSQL username |
 | `POSTGRES_PASSWORD` | **Yes** | PostgreSQL password — set a real value |
 | `POSTGRES_DB` | No (default: `jobflow`) | PostgreSQL database name |
-| `DATABASE_URL` | **Yes** | Full connection string used by the backend. In Docker Compose the hostname is `postgres` (the service name). For local development outside Docker use `localhost`. |
+| `DATABASE_URL` | Host-side commands only | Connection string for commands run directly on the host (backend without Docker, `drizzle-kit`). Hostname `localhost`. Not used by Docker Compose. |
 
-> Database credentials never reach the frontend. `DATABASE_URL` is a backend-only variable.
+### Database hostname: Compose vs. host
+
+| Where the code runs | Hostname | Where `DATABASE_URL` comes from |
+|---------------------|----------|---------------------------------|
+| Backend container (Docker Compose) | `postgres` (Compose service name) | Built by `docker-compose.yml` from `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`. The `DATABASE_URL` line in `.env` is ignored. |
+| Commands on the host | `localhost` (port 5432 is published to `127.0.0.1`) | `DATABASE_URL` in `.env`, exported into your shell (see below). |
+
+> Database credentials never reach the frontend. `DATABASE_URL` is a backend-only variable, and the frontend container receives only `BACKEND_PROXY_TARGET`.
 
 ---
 
@@ -77,11 +84,15 @@ This starts three services:
 
 | Service | Container port | Host port |
 |---------|---------------|-----------|
-| PostgreSQL | 5432 | 5432 |
-| Backend (Node/Express) | 3001 | 3001 |
-| Frontend (Vite dev server) | 5173 | 5173 |
+| PostgreSQL | 5432 | 127.0.0.1:5432 |
+| Backend (Node/Express) | 3001 | 127.0.0.1:3001 |
+| Frontend (Vite dev server) | 5173 | 127.0.0.1:5173 |
 
 The backend waits for PostgreSQL to pass its health check before starting.
+
+> **Local development only.** All published ports are bound to `127.0.0.1`, so the stack is reachable only from this machine. This Compose file is not a remote or production deployment setup.
+
+Dependencies are installed with `npm ci` from the committed lockfiles. Source files are copied into the images at build time, so run `docker compose up --build` after changing code or dependencies.
 
 ---
 
@@ -101,8 +112,8 @@ The backend waits for PostgreSQL to pass its health check before starting.
 Open http://localhost:5173 in a browser. The status page shows three rows:
 
 - **Frontend** — always green (React is running)
-- **Backend** — green when the HTTP call to `/api/health` succeeds
-- **PostgreSQL** — green when Drizzle successfully executes `SELECT 1`
+- **Backend** — green when `/api/health` returns a valid health response; red "Backend unreachable" otherwise
+- **PostgreSQL** — green when Drizzle successfully executes `SELECT 1`; red "Database unavailable" when the backend reports a database failure; "Unknown" when the backend cannot be reached
 
 **Backend health endpoint directly:**
 
@@ -112,6 +123,12 @@ curl http://localhost:3001/health
 ```
 
 The `"db":"connected"` value reflects a real database query, not merely that a URL is configured.
+
+If the database query fails, the endpoint returns HTTP 503 with a fixed body. Error details are written to the backend log only (`docker compose logs backend`), never to the response:
+
+```json
+{"status":"error","db":"unreachable"}
+```
 
 **Via the Vite proxy (same path the browser uses):**
 
@@ -150,18 +167,19 @@ docker compose logs -f postgres
 
 ### Local (without Docker)
 
-You need a running PostgreSQL instance and `DATABASE_URL` pointing to `localhost`.
+You need a running PostgreSQL instance reachable on `localhost:5432` (for example `docker compose up -d postgres`) and `DATABASE_URL` from `.env` exported into your shell.
 
 ```bash
 # Backend
 cd backend
-npm install
-DATABASE_URL=postgresql://jobflow:password@localhost:5432/jobflow npm run dev
+npm ci
+set -a && . ../.env && set +a   # exports DATABASE_URL (localhost) into this shell
+npm run dev
 
 # Frontend (separate terminal)
 cd frontend
-npm install
-npm run dev
+npm ci
+npm run dev   # proxies /api to http://localhost:3001
 ```
 
 ### Type checking and builds
@@ -182,10 +200,15 @@ cd frontend && npm run build
 
 Drizzle Kit is configured for future schema migrations. No product tables exist in this foundation step.
 
+These commands run on the host, so they use the `localhost` `DATABASE_URL` from `.env`:
+
 ```bash
+cd backend
+set -a && . ../.env && set +a
+
 # Generate a migration from schema changes (future use)
-cd backend && npx drizzle-kit generate
+npx drizzle-kit generate
 
 # Push schema directly to the database (development only)
-cd backend && DATABASE_URL=... npx drizzle-kit push
+npx drizzle-kit push
 ```

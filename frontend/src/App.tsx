@@ -1,30 +1,50 @@
 import { useEffect, useState } from "react";
 
-type HealthStatus =
-  | { state: "loading" }
-  | { state: "ok"; db: string }
-  | { state: "error"; detail: string };
+type HealthState = "loading" | "ok" | "db-unavailable" | "backend-unreachable";
+
+type RowStatus = "loading" | "ok" | "error" | "unknown";
+
+const BACKEND_ROW: Record<HealthState, [RowStatus, string]> = {
+  loading: ["loading", "Checking…"],
+  ok: ["ok", "HTTP /health responded"],
+  "db-unavailable": ["ok", "HTTP /health responded"],
+  "backend-unreachable": ["error", "Backend unreachable"],
+};
+
+const DATABASE_ROW: Record<HealthState, [RowStatus, string]> = {
+  loading: ["loading", "Checking…"],
+  ok: ["ok", "Drizzle connected (SELECT 1)"],
+  "db-unavailable": ["error", "Database unavailable"],
+  "backend-unreachable": ["unknown", "Unknown (backend unreachable)"],
+};
+
+// Backend contract: 200 {status:"ok"} or 503 {status:"error", db:"unreachable"}.
+// Anything else (network failure, proxy error, non-JSON body) means the backend
+// itself could not be reached, so the database state is unknown.
+async function checkHealth(): Promise<HealthState> {
+  let res: Response;
+  try {
+    res = await fetch("/api/health");
+  } catch {
+    return "backend-unreachable";
+  }
+  const data: unknown = await res.json().catch(() => null);
+  const status =
+    typeof data === "object" && data !== null && "status" in data ? data.status : undefined;
+  if (res.ok && status === "ok") return "ok";
+  if (res.status === 503 && status === "error") return "db-unavailable";
+  return "backend-unreachable";
+}
 
 export default function App() {
-  const [health, setHealth] = useState<HealthStatus>({ state: "loading" });
+  const [health, setHealth] = useState<HealthState>("loading");
 
   useEffect(() => {
-    fetch("/api/health")
-      .then(async (res) => {
-        const data = await res.json();
-        if (res.ok) {
-          setHealth({ state: "ok", db: data.db });
-        } else {
-          setHealth({ state: "error", detail: data.detail ?? "Backend returned an error" });
-        }
-      })
-      .catch((err: unknown) => {
-        setHealth({
-          state: "error",
-          detail: err instanceof Error ? err.message : "Network error",
-        });
-      });
+    checkHealth().then(setHealth);
   }, []);
+
+  const [backendStatus, backendDetail] = BACKEND_ROW[health];
+  const [dbStatus, dbDetail] = DATABASE_ROW[health];
 
   return (
     <main style={styles.main}>
@@ -32,28 +52,8 @@ export default function App() {
       <section style={styles.card}>
         <h2 style={styles.cardTitle}>System Status</h2>
         <StatusRow label="Frontend" status="ok" detail="React + Vite running" />
-        <StatusRow
-          label="Backend"
-          status={health.state === "loading" ? "loading" : health.state}
-          detail={
-            health.state === "loading"
-              ? "Checking…"
-              : health.state === "ok"
-                ? "HTTP /health responded"
-                : health.detail
-          }
-        />
-        <StatusRow
-          label="PostgreSQL"
-          status={health.state === "loading" ? "loading" : health.state}
-          detail={
-            health.state === "loading"
-              ? "Checking…"
-              : health.state === "ok"
-                ? `Drizzle connected — db: ${health.db}`
-                : "Unreachable"
-          }
-        />
+        <StatusRow label="Backend" status={backendStatus} detail={backendDetail} />
+        <StatusRow label="PostgreSQL" status={dbStatus} detail={dbDetail} />
       </section>
     </main>
   );
@@ -65,11 +65,11 @@ function StatusRow({
   detail,
 }: {
   label: string;
-  status: "loading" | "ok" | "error";
+  status: RowStatus;
   detail: string;
 }) {
-  const indicator = status === "loading" ? "⏳" : status === "ok" ? "✅" : "❌";
-  const color = status === "loading" ? "#888" : status === "ok" ? "#1a7a1a" : "#b00020";
+  const indicator = { loading: "⏳", ok: "✅", error: "❌", unknown: "❔" }[status];
+  const color = { loading: "#888", ok: "#1a7a1a", error: "#b00020", unknown: "#888" }[status];
   return (
     <div style={styles.row}>
       <span style={styles.label}>{label}</span>

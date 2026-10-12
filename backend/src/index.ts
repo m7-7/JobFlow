@@ -1,4 +1,3 @@
-import cors from "cors";
 import express from "express";
 import { sql } from "drizzle-orm";
 import { db } from "./db.js";
@@ -6,12 +5,8 @@ import { db } from "./db.js";
 const app = express();
 const port = process.env.PORT ?? "3001";
 
-// Allow requests from the Vite dev server (host-side development only)
-const allowedOrigins = process.env.CORS_ORIGIN
-  ? process.env.CORS_ORIGIN.split(",").map((o) => o.trim())
-  : ["http://localhost:5173"];
-
-app.use(cors({ origin: allowedOrigins, credentials: false }));
+// No CORS middleware: the browser reaches this API only through the Vite
+// dev server's same-origin /api proxy.
 app.use(express.json());
 
 app.get("/health", async (_req, res) => {
@@ -20,10 +15,15 @@ app.get("/health", async (_req, res) => {
     await db.execute(sql`SELECT 1`);
     res.json({ status: "ok", db: "connected" });
   } catch (err) {
-    // Log error class only — never log the connection string
-    const message = err instanceof Error ? err.message : "unknown error";
-    console.error("Health check DB error:", message);
-    res.status(503).json({ status: "error", db: "unreachable", detail: message });
+    // Details stay in the server log only. Drizzle wraps the driver error in
+    // `cause`. postgres.js error messages do not include the password or
+    // connection string, but can include the DB username, hostnames and
+    // internal IPs, so they are never sent to clients.
+    const cause = err instanceof Error && err.cause instanceof Error ? err.cause : err;
+    const code = (cause as { code?: unknown })?.code ?? "unknown";
+    const message = cause instanceof Error ? cause.message : "unknown error";
+    console.error(`Health check DB error [${code}]: ${message}`);
+    res.status(503).json({ status: "error", db: "unreachable" });
   }
 });
 
