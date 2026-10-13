@@ -1,0 +1,92 @@
+{
+  "id": "62558bc1-5e75-4770-a7b3-743349004fab",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.candidate_profile": {
+      "name": "candidate_profile",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "smallint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": 1
+        },
+        "headline": {
+          "name": "headline",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "experience_summary": {
+          "name": "experience_summary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "location": {
+          "name": "location",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "target_roles": {
+          "name": "target_roles",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "work_model": {
+          "name": "work_model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "career_instructions": {
+          "name": "career_instructions",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "candidate_profile_singleton": {
+          "name": "candidate_profile_singleton",
+          "value": "\"candidate_profile\".\"id\" = 1"
+        },
+        "candidate_profile_work_model_allowed": {
+          "name": "candidate_profile_work_model_allowed",
+          "value": "\"candidate_profile\".\"work_model\" IS NULL OR \"candidate_profile\".\"work_model\" IN ('remote', 'hybrid', 'onsite', 'flexible')"
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

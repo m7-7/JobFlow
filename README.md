@@ -29,7 +29,7 @@ JobFlow/
 │   ├── src/
 │   │   ├── index.ts   # HTTP server entry point
 │   │   ├── db.ts      # Drizzle client initialisation
-│   │   └── schema.ts  # Database schema (empty until Chapter 3)
+│   │   └── schema.ts  # Database schema (candidate_profile)
 │   ├── drizzle.config.ts
 │   └── Dockerfile
 ├── docker-compose.yml
@@ -198,17 +198,56 @@ cd frontend && npm run build
 
 ## Database migrations
 
-Drizzle Kit is configured for future schema migrations. No product tables exist in this foundation step.
+Schema changes are made in `backend/src/schema.ts` and shipped as version-controlled
+SQL migration files under `backend/drizzle/`, generated and applied with Drizzle Kit.
+`drizzle-kit push` is not used for product schema — it skips the migration file, so
+changes aren't reviewable or reproducible.
 
-These commands run on the host, so they use the `localhost` `DATABASE_URL` from `.env`:
+These commands run on the host, so they use the `localhost` `DATABASE_URL` from `.env`
+(see "Database hostname: Compose vs. host" above):
 
 ```bash
 cd backend
 set -a && . ../.env && set +a
-
-# Generate a migration from schema changes (future use)
-npx drizzle-kit generate
-
-# Push schema directly to the database (development only)
-npx drizzle-kit push
 ```
+
+**Generate a migration** after changing `schema.ts`:
+
+```bash
+npm run db:generate
+```
+
+This writes a new timestamped `.sql` file (plus a snapshot) under `backend/drizzle/`.
+**Always review the generated SQL by hand before applying it** — confirm it only
+creates/alters the tables you intended, and contains no unexpected `DROP` or data-loss
+statements. Commit the migration file to git once it looks right.
+
+**Apply pending migrations:**
+
+```bash
+npm run db:migrate
+```
+
+This runs `drizzle-kit migrate`, which applies any `.sql` files in `backend/drizzle/`
+that haven't been applied yet, tracked in a `__drizzle_migrations` table. Re-running it
+is safe: already-applied migrations are skipped, nothing is re-created or reset.
+Nothing in this stack runs schema sync automatically — the backend never applies
+migrations on startup, so this is always an explicit, manual step.
+
+**Verify migration status** by inspecting the applied-migrations table and the schema
+directly:
+
+```bash
+set -a && . ../.env && set +a
+psql "$DATABASE_URL" -c "SELECT * FROM drizzle.__drizzle_migrations ORDER BY id;"
+psql "$DATABASE_URL" -c "\d candidate_profile"
+```
+
+### Candidate profile table
+
+`candidate_profile` is a single-row (singleton) table: the primary key defaults to
+`1` and a `CHECK` constraint rejects any other `id`, so at most one profile can ever
+exist. **The migration does not create that row.** On a freshly migrated database,
+`candidate_profile` has zero rows — the row is created lazily by the backend on the
+first successful profile save (a later step). Until then, there is simply no profile
+yet, which is the expected state for an unconfigured instance.
