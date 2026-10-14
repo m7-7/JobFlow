@@ -14,5 +14,7 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  // Unit tests run under node:test (see package.json "test"), not in the app build.
+  "exclude": ["src/**/*.test.ts"]
 }

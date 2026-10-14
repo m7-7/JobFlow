@@ -12,7 +12,7 @@ Self-hosted Job Search Automation application.
 |------|----------------|
 | [Docker](https://docs.docker.com/get-docker/) | 24+ |
 | Docker Compose (included with Docker Desktop) | v2 |
-| [Node.js](https://nodejs.org/) | 22 (local dev only) |
+| [Node.js](https://nodejs.org/) | 22 (local dev only); 22.18+ to run the frontend unit tests |
 | [npm](https://www.npmjs.com/) | 10 (local dev only) |
 
 ---
@@ -351,3 +351,20 @@ docker stop jobflow-test-db
 ```
 
 The database-unavailable tests point the app at a closed port and need no database.
+
+---
+
+## Frontend tests
+
+```bash
+cd frontend && npm test
+```
+
+Unit tests for the profile form's data conversions (`src/profile.ts`) and API calls
+(`src/profileApi.ts`, with `fetch` stubbed) use Node's built-in test runner and run the
+`.ts` files directly through Node's built-in TypeScript type stripping, so there is no
+extra test dependency. This needs **Node.js 22.18 or newer** on the host. No server or
+database is required. Test files are excluded from the app type check and build.
+
+The form component itself (React rendering, focus, live regions) is not covered by
+these unit tests; there is no DOM test framework in the project.
