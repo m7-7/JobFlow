@@ -11,7 +11,9 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "127.0.0.1:5432:5432"
+      # Host port 5433, not 5432: a native PostgreSQL may already own
+      # localhost:5432. Containers still reach this service at postgres:5432.
+      - "127.0.0.1:5433:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-jobflow} -d ${POSTGRES_DB:-jobflow}"]
       interval: 5s

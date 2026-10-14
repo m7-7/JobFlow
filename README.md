@@ -49,7 +49,7 @@ JobFlow/
 2. Open `.env` and set a real password for `POSTGRES_PASSWORD`, and use the same password in `DATABASE_URL`:
    ```dotenv
    POSTGRES_PASSWORD=your_secure_password_here
-   DATABASE_URL=postgresql://jobflow:your_secure_password_here@localhost:5432/jobflow
+   DATABASE_URL=postgresql://jobflow:your_secure_password_here@localhost:5433/jobflow
    ```
 
    > `.env` is listed in `.gitignore` and must never be committed.
@@ -68,7 +68,7 @@ JobFlow/
 | Where the code runs | Hostname | Where `DATABASE_URL` comes from |
 |---------------------|----------|---------------------------------|
 | Backend container (Docker Compose) | `postgres` (Compose service name) | Built by `docker-compose.yml` from `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`. The `DATABASE_URL` line in `.env` is ignored. |
-| Commands on the host | `localhost` (port 5432 is published to `127.0.0.1`) | `DATABASE_URL` in `.env`, exported into your shell (see below). |
+| Commands on the host | `localhost` (container port 5432 is published to `127.0.0.1:5433`) | `DATABASE_URL` in `.env`, exported into your shell (see below). |
 
 > Database credentials never reach the frontend. `DATABASE_URL` is a backend-only variable, and the frontend container receives only `BACKEND_PROXY_TARGET`.
 
@@ -84,9 +84,11 @@ This starts three services:
 
 | Service | Container port | Host port |
 |---------|---------------|-----------|
-| PostgreSQL | 5432 | 127.0.0.1:5432 |
+| PostgreSQL | 5432 | 127.0.0.1:5433 |
 | Backend (Node/Express) | 3001 | 127.0.0.1:3001 |
 | Frontend (Vite dev server) | 5173 | 127.0.0.1:5173 |
+
+> PostgreSQL is published on host port **5433**, not 5432, so it does not collide with a natively installed PostgreSQL on `localhost:5432`. Inside the Compose network the backend still connects to `postgres:5432`.
 
 The backend waits for PostgreSQL to pass its health check before starting.
 
@@ -167,7 +169,7 @@ docker compose logs -f postgres
 
 ### Local (without Docker)
 
-You need a running PostgreSQL instance reachable on `localhost:5432` (for example `docker compose up -d postgres`) and `DATABASE_URL` from `.env` exported into your shell.
+You need a running PostgreSQL instance reachable on `localhost:5433` (for example `docker compose up -d postgres`) and `DATABASE_URL` from `.env` exported into your shell.
 
 ```bash
 # Backend
