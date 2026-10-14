@@ -27,9 +27,15 @@ JobFlow/
 │   └── Dockerfile
 ├── backend/           # Node.js + TypeScript + Express
 │   ├── src/
-│   │   ├── index.ts   # HTTP server entry point
-│   │   ├── db.ts      # Drizzle client initialisation
-│   │   └── schema.ts  # Database schema (candidate_profile)
+│   │   ├── index.ts               # HTTP server entry point (listen only)
+│   │   ├── app.ts                 # Express app: middleware, routes, error handler
+│   │   ├── errors.ts              # Safe error responses (400/413/503/500)
+│   │   ├── profile-routes.ts      # GET/PUT /profile (HTTP layer)
+│   │   ├── profile-validation.ts  # Profile validation and normalization rules
+│   │   ├── profile-store.ts       # Profile persistence (Drizzle)
+│   │   ├── db.ts                  # Drizzle client initialisation
+│   │   └── schema.ts              # Database schema (candidate_profile)
+│   ├── test/                      # node:test unit + integration tests
 │   ├── drizzle.config.ts
 │   └── Dockerfile
 ├── docker-compose.yml
@@ -253,3 +259,95 @@ exist. **The migration does not create that row.** On a freshly migrated databas
 `candidate_profile` has zero rows — the row is created lazily by the backend on the
 first successful profile save (a later step). Until then, there is simply no profile
 yet, which is the expected state for an unconfigured instance.
+
+---
+
+## Candidate profile API
+
+The browser calls `/api/profile`; the Vite proxy strips `/api`, so the backend
+route itself is `/profile` (the same convention as `/api/health` → `/health`).
+
+| Request | Response |
+|---------|----------|
+| `GET /api/profile` | `200` with the profile, or `200` with `null` if none has been saved yet |
+| `PUT /api/profile` | `200` with the saved profile; creates it on first save, updates it afterwards |
+
+`PUT` takes the complete profile. All six keys are required; use `null` (or `[]`
+for `targetRoles`) for anything not filled in yet. Any other key, including `id`
+or `updatedAt`, is rejected.
+
+```json
+{
+  "headline": "Senior Backend Engineer",
+  "experienceSummary": "Ten years of TypeScript.",
+  "location": "Athens, Greece",
+  "targetRoles": ["Backend Engineer", "Platform Engineer"],
+  "workModel": "hybrid",
+  "careerInstructions": null
+}
+```
+
+Responses contain these fields plus `updatedAt` (ISO 8601). The internal row id is
+never exposed.
+
+### Validation rules
+
+| Field | Rule |
+|-------|------|
+| `headline`, `location` | string or null, max 200 characters; whitespace collapsed to single spaces |
+| `experienceSummary` | string or null, max 10,000 characters; ends trimmed, line breaks kept |
+| `careerInstructions` | string or null, max 5,000 characters; ends trimmed, line breaks kept |
+| `targetRoles` | array of at most 20 strings, each 1–100 characters after trimming |
+| `workModel` | `remote`, `hybrid`, `onsite`, `flexible`, or null |
+| Body | JSON object, at most 128 kB (larger bodies get `413`) |
+
+- Text that is empty after trimming is stored as `null`.
+- Duplicate target roles (compared case-insensitively) are removed, keeping the
+  first spelling and the original order.
+- Control characters (other than tab and line breaks) and invalid Unicode are rejected.
+- Limits count characters (Unicode code points), after whitespace normalization.
+
+### Error responses
+
+| Status | When | Body |
+|--------|------|------|
+| `400` | Validation failed | `{"error":"validation_error","message":"…","details":[{"field":"workModel","message":"…"}]}` |
+| `400` | Malformed JSON | `{"error":"invalid_json","message":"…"}` |
+| `413` | Body over 128 kB | `{"error":"payload_too_large","message":"…"}` |
+| `503` | Database unreachable | `{"error":"database_unavailable","message":"…"}` |
+| `500` | Anything unexpected | `{"error":"internal_error","message":"An unexpected error occurred."}` |
+
+Error bodies never contain SQL, driver messages, connection details or stack traces.
+The server log records only the method, path, an error category and a validated error
+code (PostgreSQL SQLSTATE or connection code) — never raw driver messages, SQL,
+parameters, profile content or stack traces.
+
+---
+
+## Backend tests
+
+Tests use Node's built-in test runner (`node:test`) via `tsx`; no extra test framework.
+
+```bash
+cd backend && npm test
+```
+
+The API tests need a **disposable** PostgreSQL database in `TEST_DATABASE_URL`. They
+apply the migrations to it and delete its `candidate_profile` rows between tests, so
+they refuse to run unless the database name ends in `_test`, the port is not 5432
+(native PostgreSQL) or 5433 (JobFlow development), and it differs from `DATABASE_URL`.
+
+Start a throwaway database (in-memory storage, no volume, removed when stopped):
+
+```bash
+docker run -d --rm --name jobflow-test-db \
+  -e POSTGRES_USER=jobflow_test -e POSTGRES_PASSWORD=disposable_test_pw -e POSTGRES_DB=jobflow_test \
+  -p 127.0.0.1:55432:5432 --tmpfs /var/lib/postgresql/data postgres:16-alpine
+
+cd backend
+TEST_DATABASE_URL=postgresql://jobflow_test:disposable_test_pw@127.0.0.1:55432/jobflow_test npm test
+
+docker stop jobflow-test-db
+```
+
+The database-unavailable tests point the app at a closed port and need no database.

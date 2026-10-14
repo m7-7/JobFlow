@@ -1,0 +1,10 @@
+{
+  // Type-checks application code and tests together. The build (tsconfig.json)
+  // still compiles src/ only, so tests never reach dist/ or the Docker image.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true
+  },
+  "include": ["src", "test"]
+}
