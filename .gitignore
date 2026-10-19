@@ -20,3 +20,6 @@ backend/dist/
 .vscode/
 .idea/
 *.swp
+
+# Local database backups (may contain candidate data)
+backups/

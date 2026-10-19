@@ -34,7 +34,7 @@ JobFlow/
 │   │   ├── profile-validation.ts  # Profile validation and normalization rules
 │   │   ├── profile-store.ts       # Profile persistence (Drizzle)
 │   │   ├── db.ts                  # Drizzle client initialisation
-│   │   └── schema.ts              # Database schema (candidate_profile)
+│   │   └── schema.ts              # Database schema (candidate_profile, candidate_skill)
 │   ├── test/                      # node:test unit + integration tests
 │   ├── drizzle.config.ts
 │   └── Dockerfile
@@ -260,6 +260,25 @@ exist. **The migration does not create that row.** On a freshly migrated databas
 first successful profile save (a later step). Until then, there is simply no profile
 yet, which is the expected state for an unconfigured instance.
 
+### Candidate skill table
+
+`candidate_skill` (migration `0001`) holds the candidate's skills, one row each, with
+an integer identity `id`. It is standalone — not linked to `candidate_profile` — and
+there is no API for it yet. The database enforces:
+
+| Column | Rule |
+|---|---|
+| `name` | Required, at most 100 characters, not blank. Stored as entered (display capitalization is kept). Unique ignoring case and leading, trailing and repeated ASCII whitespace, so `TypeScript`, ` typescript ` and `TYPESCRIPT` are the same skill, as are `Machine Learning` and `machine  learning`. |
+| `experience_contexts` | JSON array of distinct values from `professional`, `personal_project`, `academic`, `learning`. Defaults to `[]`. |
+| `practical_confidence`, `interview_confidence` | Optional, independent, 1–5. |
+| `experience_months` | Optional, 0–1200. |
+| `last_used_year` | Optional, 1950–2100. |
+| `notes` | Optional text. |
+| `created_at`, `updated_at` | Set to `now()` on insert. Nothing updates `updated_at` automatically yet. |
+
+ASCII whitespace here means tab, line feed, vertical tab, form feed, carriage return
+and space. Other whitespace, such as a no-break space, is an ordinary character.
+
 ---
 
 ## Candidate profile API
@@ -351,6 +370,12 @@ docker stop jobflow-test-db
 ```
 
 The database-unavailable tests point the app at a closed port and need no database.
+
+The skill schema tests (`test/skill-schema.test.ts`) create and drop their own
+database (`<test db name>_skill_<pid>_test`) on the same disposable server, so the
+`TEST_DATABASE_URL` user needs `CREATEDB` (the throwaway container's user above has it).
+They apply migration `0000`, save a profile, then apply `0001` and check the profile is
+unchanged, before testing each `candidate_skill` constraint.
 
 ---
 
