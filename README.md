@@ -29,10 +29,13 @@ JobFlow/
 │   ├── src/
 │   │   ├── index.ts               # HTTP server entry point (listen only)
 │   │   ├── app.ts                 # Express app: middleware, routes, error handler
-│   │   ├── errors.ts              # Safe error responses (400/413/503/500)
+│   │   ├── errors.ts              # Safe error responses (400/413/503/500), duplicate-key detection
 │   │   ├── profile-routes.ts      # GET/PUT /profile (HTTP layer)
 │   │   ├── profile-validation.ts  # Profile validation and normalization rules
 │   │   ├── profile-store.ts       # Profile persistence (Drizzle)
+│   │   ├── skill-routes.ts        # GET/POST /skills, PUT/DELETE /skills/:id (HTTP layer)
+│   │   ├── skill-validation.ts    # Skill validation and normalization rules
+│   │   ├── skill-store.ts         # Skill persistence (Drizzle)
 │   │   ├── db.ts                  # Drizzle client initialisation
 │   │   └── schema.ts              # Database schema (candidate_profile, candidate_skill)
 │   ├── test/                      # node:test unit + integration tests
@@ -264,7 +267,7 @@ yet, which is the expected state for an unconfigured instance.
 
 `candidate_skill` (migration `0001`) holds the candidate's skills, one row each, with
 an integer identity `id`. It is standalone — not linked to `candidate_profile` — and
-there is no API for it yet. The database enforces:
+is managed through the [Candidate skills API](#candidate-skills-api). The database enforces:
 
 | Column | Rule |
 |---|---|
@@ -274,7 +277,7 @@ there is no API for it yet. The database enforces:
 | `experience_months` | Optional, 0–1200. |
 | `last_used_year` | Optional, 1950–2100. |
 | `notes` | Optional text. |
-| `created_at`, `updated_at` | Set to `now()` on insert. Nothing updates `updated_at` automatically yet. |
+| `created_at`, `updated_at` | Set to `now()` on insert. There is no trigger: the skills API sets `updated_at` on every update. |
 
 ASCII whitespace here means tab, line feed, vertical tab, form feed, carriage return
 and space. Other whitespace, such as a no-break space, is an ordinary character.
@@ -343,6 +346,79 @@ parameters, profile content or stack traces.
 
 ---
 
+## Candidate skills API
+
+Like the profile, the browser calls `/api/skills`; the Vite proxy strips `/api`.
+
+| Request | Response |
+|---------|----------|
+| `GET /api/skills` | `200` with an array of skills (`[]` if none), ordered by name ignoring case and ASCII whitespace, then by id |
+| `POST /api/skills` | `201` with the created skill |
+| `PUT /api/skills/:id` | `200` with the updated skill (full replacement) |
+| `DELETE /api/skills/:id` | `204`, no body |
+
+A skill in a response:
+
+```json
+{
+  "id": 1,
+  "name": "PostgreSQL",
+  "experienceContexts": ["professional", "personal_project"],
+  "practicalConfidence": 4,
+  "interviewConfidence": 3,
+  "experienceMonths": 36,
+  "lastUsedYear": 2024,
+  "notes": "Schema design and query tuning.",
+  "createdAt": "2026-10-20T09:00:00.000Z",
+  "updatedAt": "2026-10-20T09:00:00.000Z"
+}
+```
+
+The seven writable fields are `name`, `experienceContexts`, `practicalConfidence`,
+`interviewConfidence`, `experienceMonths`, `lastUsedYear` and `notes`. `id`,
+`createdAt` and `updatedAt` are set by the server; sending them (or any other key) is
+rejected.
+
+- **`POST`** requires `name`. Omitted fields default to `[]` (`experienceContexts`) or
+  `null` (the rest). An explicit `null` for `experienceContexts` is rejected.
+- **`PUT`** replaces the whole skill. All seven fields are required; use `null` or `[]`
+  to clear a value. An omitted field is rejected rather than silently cleared.
+  `updatedAt` changes on every successful `PUT`, even if nothing else did; `createdAt`
+  never changes.
+
+### Skill validation rules
+
+| Field | Rule |
+|-------|------|
+| `name` | string, 1–100 characters after normalization. Runs of tab, line feed, carriage return and space are collapsed to one space and the ends trimmed. Vertical tab and form feed are rejected as control characters. Non-ASCII whitespace (e.g. a no-break space) inside a name is kept as entered and counts toward the limit, but a name made only of whitespace of any kind is rejected. |
+| `experienceContexts` | array of distinct values from `professional`, `personal_project`, `academic`, `learning` |
+| `practicalConfidence`, `interviewConfidence` | integer 1–5, or null |
+| `experienceMonths` | integer 0–1200, or null |
+| `lastUsedYear` | integer from 1950 to the current UTC year, or null |
+| `notes` | string or null, max 2,000 characters; ends trimmed, line breaks kept; blank stored as `null` |
+| Body | JSON object, at most 128 kB (larger bodies get `413`) |
+
+Control characters, invalid Unicode and character counting follow the profile rules above.
+
+### Skill error responses
+
+In addition to the profile's `400 validation_error` (message `The skill is invalid.`),
+`400 invalid_json`, `413`, `503` and `500` responses:
+
+| Status | When | Body |
+|--------|------|------|
+| `400` | `:id` is not a canonical positive integer within PostgreSQL `integer` range (`0`, `01`, `+1`, `1.0`, `2147483648`, …) | `{"error":"invalid_id","message":"…"}` |
+| `404` | No skill has that id | `{"error":"not_found","message":"…"}` |
+| `409` | Another skill has the same name, ignoring case and ASCII whitespace | `{"error":"duplicate_skill","message":"A skill with this name already exists."}` |
+
+Duplicates are detected by the `candidate_skill_name_normalized_unique` index, not by a
+lookup first, so concurrent requests cannot both succeed. Only a unique violation
+(SQLSTATE `23505`) of that index becomes a `409`; any other database error stays a
+generic `500` (or `503` if the database is unreachable). The `409` message is fixed and
+never repeats either name.
+
+---
+
 ## Backend tests
 
 Tests use Node's built-in test runner (`node:test`) via `tsx`; no extra test framework.
@@ -369,13 +445,17 @@ TEST_DATABASE_URL=postgresql://jobflow_test:disposable_test_pw@127.0.0.1:55432/j
 docker stop jobflow-test-db
 ```
 
-The database-unavailable tests point the app at a closed port and need no database.
+The database-unavailable tests (profile and skills) point the app at a closed port and need no database.
 
 The skill schema tests (`test/skill-schema.test.ts`) create and drop their own
 database (`<test db name>_skill_<pid>_test`) on the same disposable server, so the
 `TEST_DATABASE_URL` user needs `CREATEDB` (the throwaway container's user above has it).
 They apply migration `0000`, save a profile, then apply `0001` and check the profile is
 unchanged, before testing each `candidate_skill` constraint.
+
+The skills API tests (`test/skill-api.test.ts`) likewise create, migrate and drop their
+own database (`<test db name>_skillapi_<pid>_test`), so they never share tables with
+the profile API tests running in parallel. The database is dropped even when tests fail.
 
 ---
 

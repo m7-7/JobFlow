@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { NextFunction, Request, Response } from "express";
 import { DrizzleQueryError } from "drizzle-orm";
-import { errorHandler } from "../src/errors.js";
+import { errorHandler, isUniqueViolation } from "../src/errors.js";
 import { captureConsoleError } from "./helpers.js";
 
 // Unit tests for the error handler's logging and response safety, using real
@@ -101,6 +101,42 @@ describe("errorHandler logging safety", () => {
     const out = run(`thrown ${SECRET}`);
     assert.equal(out.status, 500);
     assert.deepEqual(out.logs, ["PUT /profile failed: unexpected_error [unknown]"]);
+    assertNoLeak(out.all);
+  });
+});
+
+describe("isUniqueViolation", () => {
+  const INDEX = "candidate_skill_name_normalized_unique";
+  const uniqueError = (constraint: unknown, code: unknown = "23505") =>
+    Object.assign(new Error(`duplicate key value ${SECRET}`), { code, constraint_name: constraint });
+
+  it("matches SQLSTATE 23505 on the named index, wrapped by Drizzle or not", () => {
+    assert.equal(isUniqueViolation(uniqueError(INDEX), INDEX), true);
+    assert.equal(isUniqueViolation(new DrizzleQueryError(SQL_TEXT, [SECRET], uniqueError(INDEX)), INDEX), true);
+  });
+
+  it("does not match a unique violation of another constraint", () => {
+    for (const constraint of ["candidate_skill_pkey", "other_unique", undefined, null, `${INDEX}_x`]) {
+      assert.equal(isUniqueViolation(new DrizzleQueryError(SQL_TEXT, [SECRET], uniqueError(constraint)), INDEX), false);
+    }
+  });
+
+  it("does not match another SQLSTATE on the same index", () => {
+    for (const code of ["23514", "23502", "40001", 23505, null]) {
+      assert.equal(isUniqueViolation(new DrizzleQueryError(SQL_TEXT, [SECRET], uniqueError(INDEX, code)), INDEX), false);
+    }
+  });
+
+  it("does not match non-driver values", () => {
+    for (const err of [undefined, null, "23505", INDEX, new TypeError(INDEX)]) {
+      assert.equal(isUniqueViolation(err, INDEX), false);
+    }
+  });
+
+  it("an unrecognized 23505 still reaches the error handler as a safe 500", () => {
+    const out = run(new DrizzleQueryError(SQL_TEXT, [SECRET], uniqueError("other_unique")));
+    assert.equal(out.status, 500);
+    assert.deepEqual(out.logs, ["PUT /profile failed: database_error [23505]"]);
     assertNoLeak(out.all);
   });
 });

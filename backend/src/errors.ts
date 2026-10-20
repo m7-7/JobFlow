@@ -65,6 +65,14 @@ export function safeDiagnostic(err: unknown) {
   return { category, detail, unavailable };
 }
 
+// True only for a unique violation (SQLSTATE 23505) of the named constraint
+// or unique index. Like safeDiagnostic, it reads the driver error's code and
+// constraint name only, never its message or detail (which quote the values).
+export function isUniqueViolation(err: unknown, constraint: string): boolean {
+  const cause = rootCause(err) as { code?: unknown; constraint_name?: unknown } | null;
+  return cause?.code === "23505" && cause.constraint_name === constraint;
+}
+
 export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
   // body-parser errors (malformed JSON, oversized body, bad encoding).
   const type = (err as { type?: unknown })?.type;

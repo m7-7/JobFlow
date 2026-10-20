@@ -3,6 +3,8 @@
 //
 // Normalization only tidies whitespace. It never infers, rewrites or invents
 // candidate facts.
+//
+// The exported text helpers are shared with skill-validation.ts.
 
 export const WORK_MODELS = ["remote", "hybrid", "onsite", "flexible"] as const;
 export type WorkModel = (typeof WORK_MODELS)[number];
@@ -61,7 +63,7 @@ const FORBIDDEN_CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/
 // With the u flag, only unpaired (invalid) surrogates match this range.
 const LONE_SURROGATE = /[\uD800-\uDFFF]/u;
 
-function codePointLength(s: string): number {
+export function codePointLength(s: string): number {
   let n = 0;
   for (const _ of s) n++;
   return n;
@@ -78,7 +80,7 @@ function normalizeMultiLine(s: string): string {
   return s.replace(/\r\n?/g, "\n").trim();
 }
 
-function checkText(raw: string, field: string, errors: FieldError[]): boolean {
+export function checkText(raw: string, field: string, errors: FieldError[]): boolean {
   if (LONE_SURROGATE.test(raw)) {
     errors.push({ field, message: "must be valid Unicode text" });
     return false;
@@ -92,7 +94,7 @@ function checkText(raw: string, field: string, errors: FieldError[]): boolean {
 
 // Nullable text: string or null. A string that is empty after trimming is
 // stored as null, so "not provided" has exactly one representation.
-function nullableText(
+export function nullableText(
   raw: unknown,
   field: string,
   maxLength: number,
@@ -163,7 +165,7 @@ function workModel(raw: unknown, errors: FieldError[]): WorkModel | null {
   return null;
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
+export function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
   const proto = Object.getPrototypeOf(value);
   return proto === Object.prototype || proto === null;
