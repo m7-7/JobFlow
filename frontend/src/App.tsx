@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import ProfileForm from "./ProfileForm.tsx";
+import SkillsSection from "./SkillsSection.tsx";
 
 type HealthState = "loading" | "ok" | "db-unavailable" | "backend-unreachable";
 
@@ -57,6 +58,7 @@ export default function App() {
         <StatusRow label="PostgreSQL" status={dbStatus} detail={dbDetail} />
       </section>
       <ProfileForm />
+      <SkillsSection />
     </main>
   );
 }

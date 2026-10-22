@@ -465,11 +465,35 @@ the profile API tests running in parallel. The database is dropped even when tes
 cd frontend && npm test
 ```
 
-Unit tests for the profile form's data conversions (`src/profile.ts`) and API calls
-(`src/profileApi.ts`, with `fetch` stubbed) use Node's built-in test runner and run the
-`.ts` files directly through Node's built-in TypeScript type stripping, so there is no
-extra test dependency. This needs **Node.js 22.18 or newer** on the host. No server or
-database is required. Test files are excluded from the app type check and build.
+Unit tests for the profile and skills data conversions (`src/profile.ts`,
+`src/skill.ts`) and API calls (`src/profileApi.ts`, `src/skillsApi.ts`, with `fetch`
+stubbed) use Node's built-in test runner and run the `.ts` files directly through
+Node's built-in TypeScript type stripping, so there is no extra test dependency. This
+needs **Node.js 22.18 or newer** on the host. No server or database is required. Test
+files are excluded from the app type check and build.
 
-The form component itself (React rendering, focus, live regions) is not covered by
-these unit tests; there is no DOM test framework in the project.
+The components themselves (`ProfileForm.tsx`, `SkillsSection.tsx`, `SkillForm.tsx`:
+React rendering, focus, live regions, the async flows) are not covered by these unit
+tests; there is no DOM test framework in the project, so they are verified manually in
+the browser.
+
+---
+
+## My skills (frontend)
+
+The **My skills** section below the candidate profile lists skills in the order
+`GET /api/skills` returns them, and adds (`POST`), edits (`PUT`, always all seven
+fields) and deletes (`DELETE`, after an inline confirmation) them. One editor and one
+request that changes data run at a time.
+
+- Changes are **pessimistic**: the list changes only after the server confirms a
+  write, and is then reloaded from the server rather than re-sorted in the browser.
+  A confirmed delete removes the row even if that reload fails.
+- A definite rejection (`400`, `404`, `409`, `413`) shows the error next to the field
+  or in the form and keeps what was typed. A `409` marks the name field.
+- When the outcome of a write is unknown (network failure, `500`, `503`, unexpected
+  response), the write is **not** retried automatically. The list is reloaded so you
+  can see what was stored; if that reload also fails, a warning offers **Reload list**.
+- Experience months and last-used year must be typed as whole numbers. Other text is
+  flagged before sending and left as typed. Ranges, name length, duplicate names and
+  whitespace normalization are checked by the backend only.
