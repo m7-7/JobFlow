@@ -282,6 +282,35 @@ is managed through the [Candidate skills API](#candidate-skills-api). The databa
 ASCII whitespace here means tab, line feed, vertical tab, form feed, carriage return
 and space. Other whitespace, such as a no-break space, is an ordinary character.
 
+### Candidate evidence tables
+
+Migration `0002` adds two tables for evidence behind the candidate's skills. They are
+**persistence only**: there is no evidence API or UI yet, so rows can only be written
+directly in the database.
+
+`candidate_evidence_source` holds one source of evidence each (a job, a project, a CV,
+a portfolio), with an integer identity `id`. It is standalone, not linked to
+`candidate_profile`. Every row is recorded manually by the candidate and is **not
+verified**: `origin` records how the row was entered, not that anything was checked.
+Titles, descriptions and URLs are untrusted text, and URLs are never fetched.
+
+| Column | Rule |
+|---|---|
+| `type` | Required: `professional_experience`, `personal_project`, `cv`, `portfolio` or `other`. |
+| `title` | Required, at most 200 characters, not blank (ASCII whitespace as above). Not unique. |
+| `description` | Optional text. |
+| `url` | Optional, at most 2048 characters, must start with `http://` or `https://` (any case). This is only a coarse scheme check. |
+| `origin` | Defaults to `manual`, the only allowed value. |
+| `reviewed_at` | Optional; `NULL` means not reviewed. Nothing sets or clears it automatically. |
+| `created_at`, `updated_at` | Set to `now()` on insert. There is no trigger. |
+
+`candidate_skill_evidence` links skills to sources, many-to-many: one row per
+`(skill_id, evidence_source_id)` pair, which is the primary key, so a pair can be linked
+only once. A skill or a source can exist without any links. Both columns are foreign
+keys with `ON DELETE CASCADE`: deleting a skill or a source deletes its links, and
+nothing else. Deleting a link leaves both the skill and the source alone. An index on
+`evidence_source_id` serves lookups by source.
+
 ---
 
 ## Candidate profile API
@@ -456,6 +485,13 @@ unchanged, before testing each `candidate_skill` constraint.
 The skills API tests (`test/skill-api.test.ts`) likewise create, migrate and drop their
 own database (`<test db name>_skillapi_<pid>_test`), so they never share tables with
 the profile API tests running in parallel. The database is dropped even when tests fail.
+
+The evidence schema tests (`test/evidence-schema.test.ts`) create and drop their own
+database (`<test db name>_evidence_<pid>_test`) the same way. They apply migrations
+`0000`–`0001`, save a profile and skills, then apply `0002` and check that the saved
+rows and the existing table definitions are unchanged, that a second run applies
+nothing, and that each evidence constraint, foreign key and cascade behaves as described
+in [Candidate evidence tables](#candidate-evidence-tables).
 
 ---
 

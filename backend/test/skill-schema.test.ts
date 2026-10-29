@@ -113,11 +113,14 @@ describe("migration 0001", () => {
     assert.deepEqual([...(await sql`SELECT * FROM candidate_profile`)], [...profileBefore]);
     assert.deepEqual(await profileStructure(), structureBefore);
     assert.equal((await sql`SELECT to_regclass('public.candidate_skill') AS t`)[0].t, "candidate_skill");
-    assert.equal((await sql`SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations`)[0].n, 2);
+    // Later migrations are applied too, so count every journal entry.
+    const journal = JSON.parse(await readFile(path.join(migrationsFolder, "meta", "_journal.json"), "utf8"));
+    const migrationTotal = journal.entries.length;
+    assert.equal((await sql`SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations`)[0].n, migrationTotal);
 
     // Re-running is a no-op.
     await migrate(db, { migrationsFolder });
-    assert.equal((await sql`SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations`)[0].n, 2);
+    assert.equal((await sql`SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations`)[0].n, migrationTotal);
   });
 });
 

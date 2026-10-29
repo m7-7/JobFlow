@@ -1,0 +1,402 @@
+{
+  "id": "d6c02b44-c163-4b64-897f-ded2b3d31629",
+  "prevId": "7908958f-f6f4-4d0d-a45c-fd890614d6ca",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.candidate_evidence_source": {
+      "name": "candidate_evidence_source",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "candidate_evidence_source_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "varchar(200)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "url": {
+          "name": "url",
+          "type": "varchar(2048)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "origin": {
+          "name": "origin",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'manual'"
+        },
+        "reviewed_at": {
+          "name": "reviewed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "candidate_evidence_source_type_allowed": {
+          "name": "candidate_evidence_source_type_allowed",
+          "value": "\"candidate_evidence_source\".\"type\" IN ('professional_experience', 'personal_project', 'cv', 'portfolio', 'other')"
+        },
+        "candidate_evidence_source_title_not_blank": {
+          "name": "candidate_evidence_source_title_not_blank",
+          "value": "\"candidate_evidence_source\".\"title\" ~ '[^\\t\\n\\v\\f\\r ]'"
+        },
+        "candidate_evidence_source_url_http": {
+          "name": "candidate_evidence_source_url_http",
+          "value": "\"candidate_evidence_source\".\"url\" IS NULL OR \"candidate_evidence_source\".\"url\" ~* '^https?://'"
+        },
+        "candidate_evidence_source_origin_allowed": {
+          "name": "candidate_evidence_source_origin_allowed",
+          "value": "\"candidate_evidence_source\".\"origin\" = 'manual'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.candidate_profile": {
+      "name": "candidate_profile",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "smallint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": 1
+        },
+        "headline": {
+          "name": "headline",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "experience_summary": {
+          "name": "experience_summary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "location": {
+          "name": "location",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "target_roles": {
+          "name": "target_roles",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "work_model": {
+          "name": "work_model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "career_instructions": {
+          "name": "career_instructions",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "candidate_profile_singleton": {
+          "name": "candidate_profile_singleton",
+          "value": "\"candidate_profile\".\"id\" = 1"
+        },
+        "candidate_profile_work_model_allowed": {
+          "name": "candidate_profile_work_model_allowed",
+          "value": "\"candidate_profile\".\"work_model\" IS NULL OR \"candidate_profile\".\"work_model\" IN ('remote', 'hybrid', 'onsite', 'flexible')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.candidate_skill": {
+      "name": "candidate_skill",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "candidate_skill_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "name": {
+          "name": "name",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "experience_contexts": {
+          "name": "experience_contexts",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "practical_confidence": {
+          "name": "practical_confidence",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "interview_confidence": {
+          "name": "interview_confidence",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "experience_months": {
+          "name": "experience_months",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_used_year": {
+          "name": "last_used_year",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "candidate_skill_name_normalized_unique": {
+          "name": "candidate_skill_name_normalized_unique",
+          "columns": [
+            {
+              "expression": "lower(btrim(regexp_replace(\"name\", '[\\t\\n\\v\\f\\r ]+', ' ', 'g')))",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "candidate_skill_name_not_blank": {
+          "name": "candidate_skill_name_not_blank",
+          "value": "\"candidate_skill\".\"name\" ~ '[^\\t\\n\\v\\f\\r ]'"
+        },
+        "candidate_skill_experience_contexts_array": {
+          "name": "candidate_skill_experience_contexts_array",
+          "value": "jsonb_typeof(\"candidate_skill\".\"experience_contexts\") = 'array'"
+        },
+        "candidate_skill_experience_contexts_allowed": {
+          "name": "candidate_skill_experience_contexts_allowed",
+          "value": "\"candidate_skill\".\"experience_contexts\" <@ '[\"professional\", \"personal_project\", \"academic\", \"learning\"]'::jsonb"
+        },
+        "candidate_skill_experience_contexts_unique": {
+          "name": "candidate_skill_experience_contexts_unique",
+          "value": "CASE WHEN jsonb_typeof(\"candidate_skill\".\"experience_contexts\") = 'array' THEN\n        jsonb_array_length(\"candidate_skill\".\"experience_contexts\") =\n          (\"candidate_skill\".\"experience_contexts\" @> '[\"professional\"]')::int +\n          (\"candidate_skill\".\"experience_contexts\" @> '[\"personal_project\"]')::int +\n          (\"candidate_skill\".\"experience_contexts\" @> '[\"academic\"]')::int +\n          (\"candidate_skill\".\"experience_contexts\" @> '[\"learning\"]')::int\n      ELSE true END"
+        },
+        "candidate_skill_practical_confidence_range": {
+          "name": "candidate_skill_practical_confidence_range",
+          "value": "\"candidate_skill\".\"practical_confidence\" IS NULL OR \"candidate_skill\".\"practical_confidence\" BETWEEN 1 AND 5"
+        },
+        "candidate_skill_interview_confidence_range": {
+          "name": "candidate_skill_interview_confidence_range",
+          "value": "\"candidate_skill\".\"interview_confidence\" IS NULL OR \"candidate_skill\".\"interview_confidence\" BETWEEN 1 AND 5"
+        },
+        "candidate_skill_experience_months_range": {
+          "name": "candidate_skill_experience_months_range",
+          "value": "\"candidate_skill\".\"experience_months\" IS NULL OR \"candidate_skill\".\"experience_months\" BETWEEN 0 AND 1200"
+        },
+        "candidate_skill_last_used_year_range": {
+          "name": "candidate_skill_last_used_year_range",
+          "value": "\"candidate_skill\".\"last_used_year\" IS NULL OR \"candidate_skill\".\"last_used_year\" BETWEEN 1950 AND 2100"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.candidate_skill_evidence": {
+      "name": "candidate_skill_evidence",
+      "schema": "",
+      "columns": {
+        "skill_id": {
+          "name": "skill_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "evidence_source_id": {
+          "name": "evidence_source_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "candidate_skill_evidence_source_idx": {
+          "name": "candidate_skill_evidence_source_idx",
+          "columns": [
+            {
+              "expression": "evidence_source_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "candidate_skill_evidence_skill_fk": {
+          "name": "candidate_skill_evidence_skill_fk",
+          "tableFrom": "candidate_skill_evidence",
+          "tableTo": "candidate_skill",
+          "columnsFrom": [
+            "skill_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "candidate_skill_evidence_source_fk": {
+          "name": "candidate_skill_evidence_source_fk",
+          "tableFrom": "candidate_skill_evidence",
+          "tableTo": "candidate_evidence_source",
+          "columnsFrom": [
+            "evidence_source_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "candidate_skill_evidence_pk": {
+          "name": "candidate_skill_evidence_pk",
+          "columns": [
+            "skill_id",
+            "evidence_source_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

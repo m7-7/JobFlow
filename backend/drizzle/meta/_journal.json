@@ -15,6 +15,13 @@
       "when": 1792398434563,
       "tag": "0001_candidate_skill",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793283946484,
+      "tag": "0002_candidate_evidence",
+      "breakpoints": true
     }
   ]
 }

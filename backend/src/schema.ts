@@ -1,4 +1,17 @@
-import { pgTable, smallint, integer, varchar, text, jsonb, timestamp, check, uniqueIndex } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  smallint,
+  integer,
+  varchar,
+  text,
+  jsonb,
+  timestamp,
+  check,
+  uniqueIndex,
+  index,
+  primaryKey,
+  foreignKey,
+} from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
 // Single-user application: exactly one candidate profile row can ever exist,
@@ -107,5 +120,73 @@ export const candidateSkill = pgTable(
       "candidate_skill_last_used_year_range",
       sql`${table.lastUsedYear} IS NULL OR ${table.lastUsedYear} BETWEEN 1950 AND 2100`
     ),
+  ]
+);
+
+export const EVIDENCE_SOURCE_TYPES = ["professional_experience", "personal_project", "cv", "portfolio", "other"] as const;
+export type EvidenceSourceType = (typeof EVIDENCE_SOURCE_TYPES)[number];
+
+export const EVIDENCE_ORIGINS = ["manual"] as const;
+export type EvidenceOrigin = (typeof EVIDENCE_ORIGINS)[number];
+
+// Something the candidate points to as evidence for their skills (a job, a
+// project, a CV, a portfolio). Recorded by the candidate and not verified:
+// origin says how the row was entered, not that it was checked. Title,
+// description and url are untrusted text. Standalone: not linked to
+// candidate_profile.
+export const candidateEvidenceSource = pgTable(
+  "candidate_evidence_source",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    type: text("type").$type<EvidenceSourceType>().notNull(),
+    title: varchar("title", { length: 200 }).notNull(),
+    description: text("description"),
+
+    // Only the scheme is checked here; the API owns detailed URL validation.
+    // The URL is never fetched.
+    url: varchar("url", { length: 2048 }),
+
+    origin: text("origin").$type<EvidenceOrigin>().notNull().default("manual"),
+
+    // When the candidate last reviewed this source; null = not reviewed. Set
+    // and cleared by the API, not by the database.
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check(
+      "candidate_evidence_source_type_allowed",
+      sql`${table.type} IN ('professional_experience', 'personal_project', 'cv', 'portfolio', 'other')`
+    ),
+    check("candidate_evidence_source_title_not_blank", sql`${table.title} ~ '[^\\t\\n\\v\\f\\r ]'`),
+    check("candidate_evidence_source_url_http", sql`${table.url} IS NULL OR ${table.url} ~* '^https?://'`),
+    check("candidate_evidence_source_origin_allowed", sql`${table.origin} = 'manual'`),
+  ]
+);
+
+// Which evidence sources support which skills. Many-to-many; a skill or a
+// source can exist without any link. Deleting either side removes its links.
+export const candidateSkillEvidence = pgTable(
+  "candidate_skill_evidence",
+  {
+    skillId: integer("skill_id").notNull(),
+    evidenceSourceId: integer("evidence_source_id").notNull(),
+  },
+  (table) => [
+    primaryKey({ name: "candidate_skill_evidence_pk", columns: [table.skillId, table.evidenceSourceId] }),
+    // The primary key serves lookups by skill; this one serves lookups by source.
+    index("candidate_skill_evidence_source_idx").on(table.evidenceSourceId),
+    foreignKey({
+      name: "candidate_skill_evidence_skill_fk",
+      columns: [table.skillId],
+      foreignColumns: [candidateSkill.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "candidate_skill_evidence_source_fk",
+      columns: [table.evidenceSourceId],
+      foreignColumns: [candidateEvidenceSource.id],
+    }).onDelete("cascade"),
   ]
 );

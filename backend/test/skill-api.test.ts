@@ -109,7 +109,8 @@ after(async () => {
 
 beforeEach(async () => {
   // Safe: this file's own database on the disposable server (guarded above).
-  await db.execute(sql`TRUNCATE candidate_skill RESTART IDENTITY`);
+  // candidate_skill_evidence references candidate_skill, so it is truncated with it.
+  await db.execute(sql`TRUNCATE candidate_skill_evidence, candidate_skill RESTART IDENTITY`);
   await db.execute(sql`DELETE FROM candidate_profile`);
 });
 
