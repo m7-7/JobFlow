@@ -73,6 +73,13 @@ export function isUniqueViolation(err: unknown, constraint: string): boolean {
   return cause?.code === "23505" && cause.constraint_name === constraint;
 }
 
+// True only for a foreign key violation (SQLSTATE 23503) of the named
+// constraint. Reads the code and constraint name only, like isUniqueViolation.
+export function isForeignKeyViolation(err: unknown, constraint: string): boolean {
+  const cause = rootCause(err) as { code?: unknown; constraint_name?: unknown } | null;
+  return cause?.code === "23503" && cause.constraint_name === constraint;
+}
+
 export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
   // body-parser errors (malformed JSON, oversized body, bad encoding).
   const type = (err as { type?: unknown })?.type;

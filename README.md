@@ -285,8 +285,8 @@ and space. Other whitespace, such as a no-break space, is an ordinary character.
 ### Candidate evidence tables
 
 Migration `0002` adds two tables for evidence behind the candidate's skills. They are
-**persistence only**: there is no evidence API or UI yet, so rows can only be written
-directly in the database.
+managed through the [Candidate evidence API](#candidate-evidence-api); there is no
+evidence UI yet.
 
 `candidate_evidence_source` holds one source of evidence each (a job, a project, a CV,
 a portfolio), with an integer identity `id`. It is standalone, not linked to
@@ -301,8 +301,8 @@ Titles, descriptions and URLs are untrusted text, and URLs are never fetched.
 | `description` | Optional text. |
 | `url` | Optional, at most 2048 characters, must start with `http://` or `https://` (any case). This is only a coarse scheme check. |
 | `origin` | Defaults to `manual`, the only allowed value. |
-| `reviewed_at` | Optional; `NULL` means not reviewed. Nothing sets or clears it automatically. |
-| `created_at`, `updated_at` | Set to `now()` on insert. There is no trigger. |
+| `reviewed_at` | Optional; `NULL` means not reviewed. Set only by the API's explicit review, cleared by the API when the source content changes (see [Review](#review)). The database itself never changes it. |
+| `created_at`, `updated_at` | The column default is `now()`, but the evidence API writes both itself, in whole milliseconds, and advances `updated_at` only when the source content changes (see [Content version](#content-version)). There is no trigger. |
 
 `candidate_skill_evidence` links skills to sources, many-to-many: one row per
 `(skill_id, evidence_source_id)` pair, which is the primary key, so a pair can be linked
@@ -448,6 +448,117 @@ never repeats either name.
 
 ---
 
+## Candidate evidence API
+
+The browser calls `/api/evidence`; the Vite proxy strips `/api`. Evidence sources are
+created and managed manually by the candidate. Nothing is imported, extracted or
+verified, and URLs are stored references only: they are never fetched, resolved or
+checked.
+
+| Request | Response |
+|---------|----------|
+| `GET /api/evidence` | `200` with an array of sources (`[]` if none), newest first (`createdAt`, then `id`, descending) |
+| `POST /api/evidence` | `201` with the created source |
+| `GET /api/evidence/:id` | `200` with the source |
+| `PUT /api/evidence/:id` | `200` with the updated source (full replacement of its content) |
+| `DELETE /api/evidence/:id` | `204`, no body. Its skill links are removed; the skills are not. |
+| `PUT /api/evidence/:id/skills` | `200` with the source, linked to exactly the given skills |
+| `POST /api/evidence/:id/review` | `200` with the source, marked as reviewed by the candidate |
+
+A source in a response (the same shape from every endpoint):
+
+```json
+{
+  "id": 7,
+  "type": "personal_project",
+  "title": "JobFlow",
+  "description": "Local job-search tool.",
+  "url": "https://example.com/project",
+  "origin": "manual",
+  "reviewedAt": null,
+  "skillIds": [2, 5],
+  "createdAt": "2026-10-29T12:00:00.000Z",
+  "updatedAt": "2026-10-29T12:00:00.000Z"
+}
+```
+
+The source **content** is `type`, `title`, `description` and `url`. `origin` is always
+`manual` and is set by the server. `skillIds` lists the linked skills in ascending
+order. Sending `id`, `origin`, `reviewedAt`, `createdAt`, `updatedAt`, `skillIds` (to
+`POST` or `PUT /:id`) or any other key is rejected.
+
+- **`POST`** requires `type` and `title`; `description` and `url` default to `null`. A
+  new source is unreviewed and has no skills.
+- **`PUT /:id`** replaces the whole content. All four fields are required; use `null`
+  to clear `description` or `url`. It never changes the skill links.
+- **`PUT /:id/skills`** takes `{"skillIds": [2, 5]}`, the complete set of linked skills
+  (`[]` unlinks every skill). Skill links are optional. The set is replaced in one
+  transaction: if any id is invalid, repeated or not an existing skill, nothing changes.
+
+### Content version
+
+`updatedAt` is the version of the source content. It changes only when a `PUT /:id`
+actually changes the content (compared after normalization), and then always moves
+past its previous value, even for edits within the same millisecond. A `PUT` that
+changes nothing keeps both `updatedAt` and `reviewedAt`. Linking or unlinking skills,
+and reviewing, change neither timestamp.
+
+This rule is enforced by the API's writes. A direct SQL change to a source bypasses it,
+so the review precondition below protects only against content changes made through
+the evidence API.
+
+### Review
+
+`POST /:id/review` records that the candidate reviewed the source's current content.
+The body names the version they reviewed, as the `updatedAt` value the API returned:
+
+```json
+{ "expectedUpdatedAt": "2026-10-29T12:00:00.000Z" }
+```
+
+If the content has changed since (the value no longer matches), nothing is recorded and
+the response is `409`. Reload the source and review again. A successful review sets
+`reviewedAt` to the server's current time and leaves `updatedAt` unchanged. Reviewing
+again refreshes `reviewedAt`.
+
+`reviewedAt` means only that the candidate looked at this content (type, title,
+description and url) and confirmed it. It says nothing about the linked skills, is not
+independent verification, and does not check that a URL still works. Any content change
+through `PUT /:id` clears it, so a non-null `reviewedAt` always refers to the current
+content. Do not compare `reviewedAt` with `updatedAt` to decide this: either can be the
+later of the two.
+
+### Evidence validation rules
+
+| Field | Rule |
+|-------|------|
+| `type` | exactly one of `professional_experience`, `personal_project`, `cv`, `portfolio`, `other` |
+| `title` | string, 1–200 characters after normalization. Runs of ASCII whitespace are collapsed to one space and the ends trimmed; a title made only of whitespace of any kind is rejected. |
+| `description` | string or null, max 5,000 characters; ends trimmed, line breaks kept; blank stored as `null` |
+| `url` | string or null; ends trimmed, blank stored as `null`. Must be an absolute `http://` or `https://` URL, with the scheme and `//` written out, a host, and no user name or password. Spaces, control characters and backslashes are rejected. Stored in its canonical form (for example `HTTPS://Example.COM` becomes `https://example.com/`, and international host names become punycode), at most 2,048 characters. |
+| `skillIds` | array of at most 500 distinct skill ids, each a JSON integer (not a string) within PostgreSQL `integer` range |
+| `expectedUpdatedAt` | string in exactly the API's `updatedAt` format (`YYYY-MM-DDTHH:mm:ss.sssZ`) |
+| Body | JSON object, at most 128 kB (larger bodies get `413`) |
+
+Control characters, invalid Unicode and character counting follow the profile rules above.
+
+### Evidence error responses
+
+In addition to `400 validation_error` (message `The evidence is invalid.`,
+`The skill links are invalid.` or `The review request is invalid.`), `400 invalid_json`,
+`413`, `503` and `500` responses:
+
+| Status | When | Body |
+|--------|------|------|
+| `400` | `:id` is not a canonical positive integer within PostgreSQL `integer` range | `{"error":"invalid_id","message":"…"}` |
+| `400` | A `skillIds` entry is not an existing skill (each is named, as `skillIds[i]`) | `validation_error` |
+| `404` | No source has that id | `{"error":"not_found","message":"…"}` |
+| `409` | Review with an `expectedUpdatedAt` that is no longer the current version | `{"error":"stale_evidence","message":"…"}` |
+
+Error messages and logs never contain titles, descriptions or URLs.
+
+---
+
 ## Backend tests
 
 Tests use Node's built-in test runner (`node:test`) via `tsx`; no extra test framework.
@@ -485,6 +596,11 @@ unchanged, before testing each `candidate_skill` constraint.
 The skills API tests (`test/skill-api.test.ts`) likewise create, migrate and drop their
 own database (`<test db name>_skillapi_<pid>_test`), so they never share tables with
 the profile API tests running in parallel. The database is dropped even when tests fail.
+
+The evidence API tests (`test/evidence-api.test.ts`) do the same with
+`<test db name>_evidenceapi_<pid>_test`. Their concurrency tests hold real row locks in
+a second connection and wait until PostgreSQL reports the API requests as blocked, so
+they do not depend on timing; any lock still held after a test is rolled back.
 
 The evidence schema tests (`test/evidence-schema.test.ts`) create and drop their own
 database (`<test db name>_evidence_<pid>_test`) the same way. They apply migrations
