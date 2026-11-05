@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import ProfileForm from "./ProfileForm.tsx";
+import EvidenceSection from "./EvidenceSection.tsx";
 import SkillsSection from "./SkillsSection.tsx";
 
 type HealthState = "loading" | "ok" | "db-unavailable" | "backend-unreachable";
@@ -59,6 +60,7 @@ export default function App() {
       </section>
       <ProfileForm />
       <SkillsSection />
+      <EvidenceSection />
     </main>
   );
 }
